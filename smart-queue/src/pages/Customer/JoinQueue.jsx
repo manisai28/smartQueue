@@ -3,9 +3,10 @@ import { Link } from 'react-router-dom';
 import { ArrowLeft, CheckCircle, Loader2, ChevronRight, Users, Clock } from 'lucide-react';
 import { fetchServices, joinQueue } from '@/services/api';
 import { useEffect } from 'react';
-import Loader from '@/components/common/Loader';
+import { useAuth } from '@/context/AuthContext';
 
 export default function JoinQueue() {
+  const { user } = useAuth();
   const [services, setServices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(null);
@@ -23,8 +24,11 @@ export default function JoinQueue() {
     if (!selected) return;
     setJoining(true);
     try {
-      const res = await joinQueue(selected);
+      const res = await joinQueue(selected, user?.id, user?.name);
       setResult(res);
+    } catch (error) {
+      console.error('Join failed:', error);
+      // Show error toast or message
     } finally {
       setJoining(false);
     }
@@ -43,7 +47,7 @@ export default function JoinQueue() {
               #{result.token}
             </div>
             <p className="text-slate-400 font-body mb-1">
-              Service: <span className="text-white font-500">{result.service}</span>
+              Service: <span className="text-white font-500">{result.serviceName || result.service}</span>
             </p>
 
             <div className="grid grid-cols-2 gap-3 mt-6 mb-6">
@@ -62,7 +66,7 @@ export default function JoinQueue() {
             </p>
 
             <div className="flex gap-3">
-              <Link to="/track" state={{ token: result.token, service: services.find(s => s.id === selected) }}
+              <Link to={`/track?serviceId=${selected}&token=${result.token}`} 
                 className="btn-primary flex-1 text-center py-3">
                 Track My Token
               </Link>
@@ -89,7 +93,11 @@ export default function JoinQueue() {
           <p className="text-slate-400 font-body mt-2">Select a service to get your virtual token.</p>
         </div>
 
-        {loading ? <Loader text="Fetching services..." /> : (
+        {loading ? (
+          <div className="flex justify-center py-12">
+            <Loader2 size={32} className="animate-spin text-accent-cyan" />
+          </div>
+        ) : (
           <>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-8">
               {services.map(s => (
@@ -114,9 +122,6 @@ export default function JoinQueue() {
                   <div className="flex items-center gap-3 text-xs font-mono">
                     <span className="flex items-center gap-1 text-slate-500">
                       <Clock size={10} /> ~{s.avgWaitTime}m wait
-                    </span>
-                    <span className="flex items-center gap-1 text-slate-500">
-                      <Users size={10} /> {s.maxCapacity} cap
                     </span>
                   </div>
                 </button>

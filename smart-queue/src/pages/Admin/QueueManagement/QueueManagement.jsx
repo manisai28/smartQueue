@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
-import { ChevronRight, Trash2, ToggleLeft, ToggleRight, Loader2, Users, Clock } from 'lucide-react';
+import { ChevronRight, Trash2, ToggleLeft, ToggleRight, Loader2, Users, Clock, RefreshCw } from 'lucide-react';
 import AdminTopbar from '@/components/common/AdminTopbar';
 import Badge from '@/components/common/Badge';
 import Loader from '@/components/common/Loader';
-import { fetchAdminQueues, callNextToken, removeToken, toggleCounter } from '@/services/api';
+import { fetchAdminQueues, callNextToken, removeToken, toggleCounter, fetchAllQueues } from '@/services/api';
 import { clsx } from 'clsx';
 import { format } from 'date-fns';
 
@@ -13,50 +13,102 @@ export default function QueueManagement() {
   const [selectedQueue, setSelectedQueue] = useState(null);
   const [actionLoading, setActionLoading] = useState(null);
   const [toast, setToast] = useState(null);
+  const [tokens, setTokens] = useState([]);
 
   const showToast = (msg, type = 'success') => {
     setToast({ msg, type });
     setTimeout(() => setToast(null), 3000);
   };
 
-  useEffect(() => {
-    fetchAdminQueues().then(data => {
+  const fetchQueues = async () => {
+    setLoading(true);
+    try {
+      const data = await fetchAllQueues();
       setQueues(data);
-      setSelectedQueue(data[0]);
+      if (data.length > 0 && !selectedQueue) {
+        setSelectedQueue(data[0]);
+        // Generate mock tokens for display (since Redis doesn't store full token details list)
+        generateMockTokens(data[0]);
+      } else if (selectedQueue) {
+        const updated = data.find(q => q.id === selectedQueue.id);
+        if (updated) {
+          setSelectedQueue(updated);
+          generateMockTokens(updated);
+        }
+      }
+    } catch (error) {
+      console.error('Fetch queues error:', error);
+    } finally {
       setLoading(false);
-    });
+    }
+  };
+
+  const generateMockTokens = (queue) => {
+    // Generate mock tokens for display based on waiting count
+    const mockTokens = [];
+    for (let i = 1; i <= Math.min(queue.waiting, 10); i++) {
+      mockTokens.push({
+        id: `${queue.id}-${i}`,
+        number: `${queue.prefix || 'T'}${queue.counter + i || 100 + i}`,
+        name: `Customer ${i}`,
+        joinedAt: new Date(Date.now() - i * 60000).toISOString(),
+        priority: i === 1 ? 'high' : 'normal',
+      });
+    }
+    setTokens(mockTokens);
+  };
+
+  useEffect(() => {
+    fetchQueues();
   }, []);
 
   const handleCallNext = async (queueId) => {
     setActionLoading('call');
-    const res = await callNextToken(queueId);
-    showToast(`Token #${res.calledToken} called successfully`);
-    setActionLoading(null);
+    try {
+      const res = await callNextToken(queueId);
+      showToast(`Token #${res.calledToken} called successfully`);
+      await fetchQueues(); // Refresh queues
+    } catch (error) {
+      showToast(error.message || 'Failed to call next token', 'error');
+    } finally {
+      setActionLoading(null);
+    }
   };
 
   const handleRemoveToken = async (queueId, tokenId) => {
     setActionLoading(tokenId);
-    await removeToken(queueId, tokenId);
-    setQueues(prev => prev.map(q =>
-      q.id === queueId ? { ...q, tokens: q.tokens.filter(t => t.id !== tokenId) } : q
-    ));
-    if (selectedQueue?.id === queueId) {
-      setSelectedQueue(prev => ({ ...prev, tokens: prev.tokens.filter(t => t.id !== tokenId) }));
+    try {
+      await removeToken(queueId, tokenId);
+      setTokens(prev => prev.filter(t => t.id !== tokenId));
+      showToast('Token removed');
+      await fetchQueues(); // Refresh queues to update waiting count
+    } catch (error) {
+      showToast('Failed to remove token', 'error');
+    } finally {
+      setActionLoading(null);
     }
-    showToast('Token removed');
-    setActionLoading(null);
   };
 
   const handleToggle = async (queue) => {
     setActionLoading('toggle-' + queue.id);
-    const newOpen = !queue.counterOpen;
-    await toggleCounter(queue.id, newOpen);
-    setQueues(prev => prev.map(q => q.id === queue.id ? { ...q, counterOpen: newOpen, status: newOpen ? 'open' : 'closed' } : q));
-    if (selectedQueue?.id === queue.id) {
-      setSelectedQueue(prev => ({ ...prev, counterOpen: newOpen, status: newOpen ? 'open' : 'closed' }));
+    const newOpen = queue.status !== 'open';
+    try {
+      await toggleCounter(queue.id, newOpen);
+      showToast(`Counter ${newOpen ? 'opened' : 'closed'}`);
+      await fetchQueues();
+    } catch (error) {
+      showToast('Failed to toggle counter', 'error');
+    } finally {
+      setActionLoading(null);
     }
-    showToast(`Counter ${newOpen ? 'opened' : 'closed'}`);
-    setActionLoading(null);
+  };
+
+  const getIcon = (serviceName) => {
+    if (serviceName.includes('Bank')) return '🏦';
+    if (serviceName.includes('Hospital')) return '🏥';
+    if (serviceName.includes('Document')) return '📄';
+    if (serviceName.includes('Customer')) return '💬';
+    return '🎫';
   };
 
   return (
@@ -79,12 +131,20 @@ export default function QueueManagement() {
           {/* Queue List Sidebar */}
           <div className="w-72 border-r border-surface-700 overflow-y-auto">
             <div className="p-4">
-              <p className="label mb-3">Services ({queues.length})</p>
+              <div className="flex justify-between items-center mb-3">
+                <p className="label">Services ({queues.length})</p>
+                <button onClick={fetchQueues} className="p-1 hover:bg-surface-700 rounded-lg transition">
+                  <RefreshCw size={14} className="text-slate-400" />
+                </button>
+              </div>
               <div className="space-y-1">
                 {queues.map(q => (
                   <button
                     key={q.id}
-                    onClick={() => setSelectedQueue(q)}
+                    onClick={() => {
+                      setSelectedQueue(q);
+                      generateMockTokens(q);
+                    }}
                     className={clsx(
                       'w-full text-left p-3 rounded-lg transition-all duration-150 group',
                       selectedQueue?.id === q.id
@@ -93,7 +153,7 @@ export default function QueueManagement() {
                     )}
                   >
                     <div className="flex items-center gap-3">
-                      <span className="text-xl">{q.icon}</span>
+                      <span className="text-xl">{getIcon(q.name)}</span>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-500 text-slate-200 truncate">{q.name}</p>
                         <div className="flex items-center gap-2 mt-0.5">
@@ -117,16 +177,16 @@ export default function QueueManagement() {
               <div className="flex items-start justify-between mb-6">
                 <div>
                   <div className="flex items-center gap-3 mb-2">
-                    <span className="text-2xl">{selectedQueue.icon}</span>
+                    <span className="text-2xl">{getIcon(selectedQueue.name)}</span>
                     <h2 className="font-display font-700 text-xl text-white">{selectedQueue.name}</h2>
                     <Badge variant={selectedQueue.status === 'open' ? 'green' : 'red'}>
-                      {selectedQueue.status}
+                      {selectedQueue.status === 'open' ? 'Open' : 'Closed'}
                     </Badge>
                   </div>
                   <div className="flex items-center gap-4 text-sm text-slate-500 font-mono">
                     <span className="flex items-center gap-1"><Users size={12} /> {selectedQueue.waiting} waiting</span>
                     <span className="flex items-center gap-1"><Clock size={12} /> ~{selectedQueue.avgWaitTime}m avg</span>
-                    <span>Now: #{selectedQueue.currentToken}</span>
+                    <span>Now: #{selectedQueue.currentServing || 'None'}</span>
                   </div>
                 </div>
 
@@ -136,14 +196,14 @@ export default function QueueManagement() {
                     disabled={actionLoading === 'toggle-' + selectedQueue.id}
                     className={clsx(
                       'flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-500 transition-all border',
-                      selectedQueue.counterOpen
+                      selectedQueue.status === 'open'
                         ? 'bg-accent-red/10 text-accent-red border-accent-red/30 hover:bg-accent-red/20'
                         : 'bg-accent-green/10 text-accent-green border-accent-green/30 hover:bg-accent-green/20'
                     )}
                   >
                     {actionLoading === 'toggle-' + selectedQueue.id ? (
                       <Loader2 size={14} className="animate-spin" />
-                    ) : selectedQueue.counterOpen ? (
+                    ) : selectedQueue.status === 'open' ? (
                       <><ToggleRight size={14} /> Close Counter</>
                     ) : (
                       <><ToggleLeft size={14} /> Open Counter</>
@@ -152,7 +212,7 @@ export default function QueueManagement() {
 
                   <button
                     onClick={() => handleCallNext(selectedQueue.id)}
-                    disabled={actionLoading === 'call' || selectedQueue.status === 'closed'}
+                    disabled={actionLoading === 'call' || selectedQueue.status !== 'open' || selectedQueue.waiting === 0}
                     className="btn-primary flex items-center gap-2 py-2.5 px-4 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {actionLoading === 'call' ? <Loader2 size={14} className="animate-spin" /> : <ChevronRight size={14} />}
@@ -165,19 +225,19 @@ export default function QueueManagement() {
               <div className="card overflow-hidden">
                 <div className="px-5 py-3.5 border-b border-surface-700 flex items-center justify-between">
                   <p className="text-sm font-500 text-slate-300">Queue Tokens</p>
-                  <span className="text-xs font-mono text-slate-500">{selectedQueue.tokens?.length || 0} entries</span>
+                  <span className="text-xs font-mono text-slate-500">{tokens.length} entries</span>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead>
                       <tr className="border-b border-surface-700">
-                        {['Token #', 'Customer', 'Joined At', 'Wait', 'Priority', 'Actions'].map(h => (
+                        {['Token #', 'Customer', 'Joined At', 'Est. Wait', 'Priority', 'Actions'].map(h => (
                           <th key={h} className="label text-left px-5 py-3">{h}</th>
                         ))}
                       </tr>
                     </thead>
                     <tbody>
-                      {selectedQueue.tokens?.map((token, i) => (
+                      {tokens.map((token, i) => (
                         <tr key={token.id} className={clsx('border-b border-surface-700/50 table-row-hover', i === 0 && 'bg-accent-cyan/5')}>
                           <td className="px-5 py-3.5">
                             <span className="font-mono font-500 text-accent-cyan">#{token.number}</span>
@@ -206,6 +266,13 @@ export default function QueueManagement() {
                           </td>
                         </tr>
                       ))}
+                      {tokens.length === 0 && (
+                        <tr>
+                          <td colSpan={6} className="px-5 py-8 text-center text-slate-500">
+                            No tokens in queue
+                          </td>
+                        </tr>
+                      )}
                     </tbody>
                   </table>
                 </div>

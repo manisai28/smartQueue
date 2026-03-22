@@ -5,13 +5,46 @@ import { fetchAllQueues } from '@/services/api';
 import Badge from '@/components/common/Badge';
 import Loader from '@/components/common/Loader';
 
+// Mapping for icons based on service name
+const getIcon = (serviceName) => {
+  if (serviceName.includes('Bank')) return '🏦';
+  if (serviceName.includes('Hospital')) return '🏥';
+  if (serviceName.includes('Document')) return '📄';
+  if (serviceName.includes('Customer')) return '💬';
+  return '🎫';
+};
+
+// Mapping for colors
+const getColor = (serviceName) => {
+  if (serviceName.includes('Bank')) return '#06b6d4';
+  if (serviceName.includes('Hospital')) return '#f59e0b';
+  if (serviceName.includes('Document')) return '#10b981';
+  if (serviceName.includes('Customer')) return '#8b5cf6';
+  return '#6b7280';
+};
+
 export default function QueueStatus() {
   const [queues, setQueues] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetchAllQueues().then(data => {
-      setQueues(data);
+      // Transform Redis data to match component expectations
+      const transformedQueues = data.map(q => ({
+        id: q.id,
+        name: q.name,
+        icon: getIcon(q.name),
+        color: getColor(q.name),
+        waiting: q.waiting,
+        avgWaitTime: q.avgWaitTime,
+        status: q.status,
+        currentServing: q.currentServing,
+        served: Math.floor(Math.random() * 50) + 20, // Mock served count for now
+        maxCapacity: 30, // Default max capacity
+      }));
+      setQueues(transformedQueues);
+      setLoading(false);
+    }).catch(() => {
       setLoading(false);
     });
   }, []);
@@ -30,7 +63,7 @@ export default function QueueStatus() {
           </div>
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-accent-green animate-pulse-slow" />
-            <span className="text-xs font-mono text-slate-500">Live</span>
+            <span className="text-xs font-mono text-slate-500">Live from Redis</span>
           </div>
         </div>
 
@@ -59,23 +92,25 @@ export default function QueueStatus() {
                         <Clock size={12} className="text-slate-500" />
                         <span>~<span className="text-white font-500">{q.avgWaitTime}</span> min avg</span>
                       </div>
-                      <div className="flex items-center gap-1.5 text-slate-400">
-                        <TrendingUp size={12} className="text-slate-500" />
-                        <span><span className="text-white font-500">{q.served}</span> served today</span>
-                      </div>
+                      {q.currentServing && q.currentServing !== 'None' && (
+                        <div className="flex items-center gap-1.5 text-slate-400">
+                          <TrendingUp size={12} className="text-slate-500" />
+                          <span>Now serving: <span className="text-white font-500">{q.currentServing}</span></span>
+                        </div>
+                      )}
                     </div>
 
                     {/* Load bar */}
                     <div className="mt-3">
                       <div className="flex justify-between text-xs font-mono text-slate-600 mb-1">
                         <span>Queue load</span>
-                        <span>{Math.round((q.waiting / q.maxCapacity) * 100)}%</span>
+                        <span>{Math.min(100, Math.round((q.waiting / q.maxCapacity) * 100))}%</span>
                       </div>
                       <div className="h-1.5 bg-surface-700 rounded-full overflow-hidden">
                         <div
                           className="h-full rounded-full transition-all duration-500"
                           style={{
-                            width: `${Math.round((q.waiting / q.maxCapacity) * 100)}%`,
+                            width: `${Math.min(100, Math.round((q.waiting / q.maxCapacity) * 100))}%`,
                             backgroundColor: q.color,
                           }}
                         />
@@ -85,8 +120,7 @@ export default function QueueStatus() {
 
                   {q.status === 'open' && (
                     <Link
-                      to="/join"
-                      state={{ serviceId: q.id }}
+                      to={`/join?serviceId=${q.id}`}
                       className="shrink-0 btn-primary text-sm py-2 px-4"
                     >
                       Join
