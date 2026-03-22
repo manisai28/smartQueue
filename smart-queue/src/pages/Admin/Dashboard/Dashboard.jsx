@@ -1,56 +1,66 @@
 import { useState, useEffect } from 'react';
-import { List, Users, CheckSquare, Clock, Activity } from 'lucide-react';
-import AdminTopbar from '@/components/common/AdminTopbar';
-import StatCard from '@/components/common/StatCard';
-import { QueueLengthChart, TokensServedChart, ServiceLoadChart } from '@/components/charts/Charts';
-import PasscodeModal from './PasscodeModal';
+import { List, Users, CheckSquare, Clock, LogOut } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '@/context/AuthContext'; // Fixed path
+import AdminTopbar from '@/components/common/AdminTopbar'; // Fixed path
+import StatCard from '@/components/common/StatCard'; // Fixed path
+import { QueueLengthChart, TokensServedChart, ServiceLoadChart } from '@/components/charts/Charts'; // Fixed path
+import PasscodeModal from './PasscodeModal'; // Make sure this exists
 import {
   fetchDashboardStats,
   fetchQueueLengthChart,
   fetchTokensServedChart,
   fetchServiceLoad,
-} from '@/services/api';
+} from '@/services/api'; // Fixed path
 
 export default function Dashboard() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const navigate = useNavigate();
+  
+  // Passcode state (hardcoded only)
+  const [isPasscodeVerified, setIsPasscodeVerified] = useState(false);
   const [showModal, setShowModal] = useState(true);
   const [stats, setStats] = useState(null);
   const [queueData, setQueueData] = useState([]);
   const [tokensData, setTokensData] = useState([]);
   const [loadData, setLoadData] = useState([]);
 
-  // Check if already authenticated (from session storage)
+  // Check if passcode already verified in this session
   useEffect(() => {
-    const adminAuth = sessionStorage.getItem('admin_authenticated');
-    if (adminAuth === 'true') {
-      setIsAuthenticated(true);
+    const adminVerified = sessionStorage.getItem('admin_verified');
+    if (adminVerified === 'true') {
+      setIsPasscodeVerified(true);
       setShowModal(false);
     }
   }, []);
 
-  // Fetch data only when authenticated
+  // Fetch data only when passcode is verified
   useEffect(() => {
-    if (isAuthenticated) {
+    if (isPasscodeVerified) {
       fetchDashboardStats().then(setStats);
       fetchQueueLengthChart().then(setQueueData);
       fetchTokensServedChart().then(setTokensData);
       fetchServiceLoad().then(setLoadData);
     }
-  }, [isAuthenticated]);
+  }, [isPasscodeVerified]);
 
   const handlePasscodeSuccess = () => {
-    sessionStorage.setItem('admin_authenticated', 'true');
-    setIsAuthenticated(true);
+    sessionStorage.setItem('admin_verified', 'true');
+    setIsPasscodeVerified(true);
     setShowModal(false);
   };
 
   const handleCloseModal = () => {
-    // Optional: redirect to home or show message
-    window.location.href = '/'; // Redirect to home if they cancel
+    // Go back to home
+    navigate('/');
   };
 
-  // If not authenticated, show nothing or loading state
-  if (!isAuthenticated) {
+  const handleLogout = () => {
+    sessionStorage.removeItem('admin_verified');
+    navigate('/');
+  };
+
+  // Show passcode modal if not verified
+  if (!isPasscodeVerified) {
     return (
       <>
         {showModal && (
@@ -65,7 +75,21 @@ export default function Dashboard() {
 
   return (
     <div className="flex flex-col flex-1">
-      <AdminTopbar title="Dashboard" subtitle="System overview — real-time monitoring" />
+      <AdminTopbar 
+        title="Dashboard" 
+        subtitle="System overview — real-time monitoring" 
+      />
+      
+      {/* Logout button */}
+      <div className="absolute top-4 right-4 z-50">
+        <button 
+          onClick={handleLogout}
+          className="flex items-center gap-2 px-3 py-2 bg-surface-800 hover:bg-surface-700 rounded-lg transition-colors"
+        >
+          <LogOut size={16} className="text-slate-400" />
+          <span className="text-sm text-slate-300">Exit Admin</span>
+        </button>
+      </div>
 
       <main className="flex-1 p-6 space-y-6 animate-fade-in">
         {/* Stat Cards */}

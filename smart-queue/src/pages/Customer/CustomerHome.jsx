@@ -1,5 +1,6 @@
-import { Link } from 'react-router-dom';
-import { Zap, Users, Clock, ArrowRight, BarChart3 } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { Zap, Users, Clock, ArrowRight, BarChart3, LogOut } from 'lucide-react';
+import { useAuth } from '@/context/AuthContext';
 
 const features = [
   { icon: Zap, title: 'Instant Token', desc: 'Get a queue token in seconds with no paperwork.' },
@@ -8,6 +9,14 @@ const features = [
 ];
 
 export default function CustomerHome() {
+  const { logout, user } = useAuth();
+  const navigate = useNavigate();
+
+  const handleLogout = () => {
+    logout();
+    navigate('/login');
+  };
+
   return (
     <div className="min-h-screen bg-surface-950 grid-bg relative overflow-hidden">
       {/* Ambient glows */}
@@ -22,11 +31,33 @@ export default function CustomerHome() {
           </div>
           <span className="font-display font-700 text-white tracking-tight">SmartQueue</span>
         </div>
-        <div className="flex items-center gap-3">
-          <Link to="/queue-status" className="btn-secondary text-sm py-2 px-4">View Queues</Link>
-          <Link to="/admin" className="btn-primary text-sm py-2 px-4 flex items-center gap-2">
-            Admin Dashboard <ArrowRight size={14} />
-          </Link>
+        
+        {/* User info and logout */}
+        <div className="flex items-center gap-4">
+          {user && (
+            <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-surface-800 rounded-lg">
+              <div className="w-6 h-6 bg-accent-cyan/20 rounded-full flex items-center justify-center">
+                <span className="text-xs text-accent-cyan font-medium">
+                  {user.name?.charAt(0).toUpperCase()}
+                </span>
+              </div>
+              <span className="text-sm text-slate-300">{user.name}</span>
+            </div>
+          )}
+          
+          <div className="flex items-center gap-3">
+            <Link to="/queue-status" className="btn-secondary text-sm py-2 px-4">View Queues</Link>
+            <Link to="/admin" className="btn-primary text-sm py-2 px-4 flex items-center gap-2">
+              Admin Dashboard <ArrowRight size={14} />
+            </Link>
+            <button 
+              onClick={handleLogout}
+              className="p-2 hover:bg-surface-800 rounded-lg transition-colors"
+              title="Logout"
+            >
+              <LogOut size={18} className="text-slate-400 hover:text-red-400 transition-colors" />
+            </button>
+          </div>
         </div>
       </nav>
 
@@ -38,8 +69,8 @@ export default function CustomerHome() {
         </div>
 
         <h1 className="font-display font-800 text-5xl md:text-7xl text-white tracking-tight leading-none mb-6 text-balance">
-          Skip the wait,<br />
-          <span className="text-accent-cyan">not the service.</span>
+          Welcome back, <br />
+          <span className="text-accent-cyan">{user?.name?.split(' ')[0] || 'Guest'}!</span>
         </h1>
 
         <p className="text-slate-400 text-lg mb-10 max-w-xl mx-auto font-body leading-relaxed">
